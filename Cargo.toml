@@ -12,5 +12,4 @@ license = "GPL-3.0"
 
 [dependencies]
 alsa = "0.6.0"
-clap = "4.0.16"
-
+clap = "3.2.22"
