@@ -2,7 +2,15 @@
 name = "blinkenpad"
 version = "0.1.0"
 edition = "2021"
+authors = ["Sunny Kalsi <thesunnyk@gmail.com>"]
+description = "Blinkenlights + Macropad + Launchpad"
+repository = "https://github.com/thesunnyk/blinkenpad"
+readme = "README.md"
+license = "GPL-3.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+alsa = "0.6.0"
+clap = "4.0.16"
+
