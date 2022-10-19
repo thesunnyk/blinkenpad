@@ -3,7 +3,7 @@ extern crate clap;
 
 use alsa::seq;
 use clap::App;
-use std::error;
+use std::{ error, thread, time };
 use std::ffi::CString;
 
 fn setup_alsaseq() -> Result<(seq::Seq, i32), Box<dyn error::Error>> {
@@ -28,7 +28,22 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let (seq, port) = setup_alsaseq()?;
     let mut input = seq.input();
+    for from_info in seq::ClientIter::new(&seq) {
+        for from_port in seq::PortIter::new(&seq, from_info.get_client()) {
+            if from_port.get_capability().contains(seq::PortCap::SUBS_READ)
+                && !from_port.get_capability().contains(seq::PortCap::NO_EXPORT) {
+
+                let sender = seq::Addr { client: from_port.get_client(), port: from_port.get_port() };
+                let subs = seq::PortSubscribe::empty()?;
+                subs.set_sender(sender);
+                subs.set_dest(seq::Addr { client: seq.client_id()?, port: port });
+                println!("Subscribing port {}, {}", from_port.get_client(), from_port.get_port());
+                seq.subscribe_port(&subs)?;
+            }
+        }
+    }
     loop {
+        thread::sleep(time::Duration::from_millis(1000));
         println!("Polling");
         while input.event_input_pending(true)? != 0 {
             let ev = input.event_input()?;
