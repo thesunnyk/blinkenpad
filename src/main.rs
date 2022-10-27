@@ -7,7 +7,7 @@ use clap::App;
 use std::{ error, thread, time };
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    let matches = App::new("Blinkenpad")
+    let _matches = App::new("Blinkenpad")
         .version("0.1.0")
         .author("Sunny Kalsi <thesunnyk@gmail.com>")
         .about("Blinkenlights and macropad on the Launchpad")

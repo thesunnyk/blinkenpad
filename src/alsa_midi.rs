@@ -15,16 +15,17 @@ pub trait PadControl {
 
 pub struct AlsaSeq {
     seq: seq::Seq,
-    input_port: i32,
-    output_port: i32,
+    port: seq::Addr,
+    queue: i32
 }
 
 impl AlsaSeq {
-    fn create_input_port_info() -> Result<seq::PortInfo, Box<dyn error::Error>> {
+    fn create_port_info() -> Result<seq::PortInfo, Box<dyn error::Error>> {
         let mut dinfo = seq::PortInfo::empty()?;
-        dinfo.set_capability(seq::PortCap::WRITE | seq::PortCap::SUBS_WRITE);
+        dinfo.set_capability(seq::PortCap::WRITE | seq::PortCap::SUBS_WRITE |
+            seq::PortCap::READ | seq::PortCap::SUBS_READ);
         dinfo.set_type(seq::PortType::MIDI_GENERIC | seq::PortType::APPLICATION);
-        dinfo.set_name(&CString::new("Input")?);
+        dinfo.set_name(&CString::new("Blinkenport")?);
         Ok(dinfo)
     }
 
@@ -32,12 +33,13 @@ impl AlsaSeq {
         let seq = seq::Seq::open(None, None, true)?;
         seq.set_client_name(&CString::new("Blinkenpad")?)?;
 
-        let dinfo = AlsaSeq::create_input_port_info()?;
-        seq.create_port(&dinfo)?;
+        let port_info = AlsaSeq::create_port_info()?;
+        seq.create_port(&port_info)?;
+        let queue = seq.alloc_queue()?;
         Ok(AlsaSeq {
             seq: seq,
-            input_port: dinfo.get_port(),
-            output_port: 0
+            port: port_info.addr(),
+            queue: queue
         })
     }
 
@@ -46,7 +48,34 @@ impl AlsaSeq {
         while input.event_input_pending(true)? != 0 {
             let ev = input.event_input()?;
             println!("{:#?}", ev);
+            println!("{:#?}", ev.get_source());
+            println!("{:#?}", ev.get_dest());
+            println!("{:#?}", ev.get_time());
+            println!("{:#?}", ev.get_tick());
+            println!("Queue {:#?}", ev.get_queue());
+
         }
+
+        for note in 10..200 {
+            println!("note {}", note);
+            let ev_note = seq::EvNote {
+                channel: 0,
+                note: note,
+                velocity: note,
+                off_velocity: 0,
+                duration: 0
+            };
+            let mut ev = seq::Event::new(seq::EventType::Noteon, &ev_note);
+
+            ev.set_subs();
+            ev.set_source(self.port.port);
+            ev.set_queue(self.queue);
+            ev.set_tag(0);
+            ev.schedule_tick(0, true, 0);
+            self.seq.event_output(&mut ev)?;
+            self.seq.drain_output()?;
+        }
+
         Ok(())
     }
 
@@ -60,11 +89,19 @@ impl AlsaSeq {
     }
 
     fn connect_input(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn error::Error>> {
-            let sender = seq::Addr { client: port.get_client(), port: port.get_port() };
             let subs = seq::PortSubscribe::empty()?;
-            subs.set_sender(sender);
-            subs.set_dest(seq::Addr { client: self.seq.client_id()?, port: self.input_port });
+            subs.set_sender(port.addr());
+            subs.set_dest(self.port);
             println!("Input port {}, {}", port.get_client(), port.get_port());
+            self.seq.subscribe_port(&subs)?;
+            Ok(())
+    }
+
+    fn connect_output(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn error::Error>> {
+            let subs = seq::PortSubscribe::empty()?;
+            subs.set_sender(self.port);
+            subs.set_dest(port.addr());
+            println!("Output port {}, {}", port.get_client(), port.get_port());
             self.seq.subscribe_port(&subs)?;
             Ok(())
     }
@@ -77,6 +114,9 @@ impl AlsaSeq {
             }
             if from_port.get_capability().contains(seq::PortCap::SUBS_READ) {
                 self.connect_input(&from_port)?;
+            }
+            if from_port.get_capability().contains(seq::PortCap::SUBS_WRITE) {
+                self.connect_output(&from_port)?;
             }
         }
         Ok(())
