@@ -15,10 +15,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let seq = alsa_midi::AlsaSeq::setup_alsaseq()?;
     seq.connect_all()?;
-    loop {
         thread::sleep(time::Duration::from_millis(1000));
+    seq.drop_inputs()?;
+    loop {
         println!("Polling");
         seq.process_io()?;
+        thread::sleep(time::Duration::from_millis(1000));
     }
 
 }

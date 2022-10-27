@@ -14,7 +14,7 @@ pub trait PadControl {
 }
 
 pub struct AlsaSeq {
-    pub seq: seq::Seq,
+    seq: seq::Seq,
     input_port: i32,
     output_port: i32,
 }
@@ -50,34 +50,43 @@ impl AlsaSeq {
         Ok(())
     }
 
-    fn connect_port(self: &AlsaSeq, from_port: &seq::PortInfo) -> Result<(), Box<dyn error::Error>> {
-        if from_port.get_capability().contains(seq::PortCap::NO_EXPORT) {
-            println!("Attempting connection to unroutable port.");
-            return Ok(());
+    pub fn drop_inputs(self: &AlsaSeq) -> Result<(), Box<dyn error::Error>> {
+        let input = self.seq.input();
+        while input.event_input_pending(true)? != 0 {
+            input.drop_input()?;
         }
-        if from_port.get_capability().contains(seq::PortCap::SUBS_READ) {
-            let sender = seq::Addr { client: from_port.get_client(), port: from_port.get_port() };
-            let subs = seq::PortSubscribe::empty()?;
-            subs.set_sender(sender);
-            subs.set_dest(seq::Addr { client: self.seq.client_id()?, port: self.input_port });
-            println!("Input port {}, {}", from_port.get_client(), from_port.get_port());
-            self.seq.subscribe_port(&subs)?;
-        }
+        println!("Dropped");
         Ok(())
     }
 
-    fn connect_client(self: &AlsaSeq, client: &seq::ClientInfo) -> Result<(), Box<dyn error::Error>> {
-            for from_port in seq::PortIter::new(&self.seq, client.get_client()) {
-                self.connect_port(&from_port)?;
-            }
+    fn connect_input(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn error::Error>> {
+            let sender = seq::Addr { client: port.get_client(), port: port.get_port() };
+            let subs = seq::PortSubscribe::empty()?;
+            subs.set_sender(sender);
+            subs.set_dest(seq::Addr { client: self.seq.client_id()?, port: self.input_port });
+            println!("Input port {}, {}", port.get_client(), port.get_port());
+            self.seq.subscribe_port(&subs)?;
             Ok(())
+    }
+
+    fn connect_ports(self: &AlsaSeq, client: &seq::ClientInfo) -> Result<(), Box<dyn error::Error>> {
+        for from_port in seq::PortIter::new(&self.seq, client.get_client()) {
+            if from_port.get_capability().contains(seq::PortCap::NO_EXPORT) {
+                println!("Skipping connection to unroutable port.");
+                return Ok(());
+            }
+            if from_port.get_capability().contains(seq::PortCap::SUBS_READ) {
+                self.connect_input(&from_port)?;
+            }
+        }
+        Ok(())
     }
 
     fn find_launchpad(self: &AlsaSeq, info: &seq::ClientInfo) -> Result<(), Box<dyn error::Error>> {
         let name = info.get_name()?;
         if name == "Launchpad Mini" {
             println!("Found Launchpad: {}", name);
-            self.connect_client(&info)?;
+            self.connect_ports(info)?;
         }
         Ok(())
     }
@@ -86,7 +95,6 @@ impl AlsaSeq {
         for from_info in seq::ClientIter::new(&self.seq) {
             self.find_launchpad(&from_info)?;
         }
-        self.seq.input().drop_input()?;
         Ok(())
     }
 }
