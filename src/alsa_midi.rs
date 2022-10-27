@@ -3,6 +3,7 @@ extern crate alsa;
 use alsa::seq;
 use std::error;
 use std::ffi::CString;
+use rand::Rng;
 
 pub trait NoteHandler {
     fn on_note(&self);
@@ -16,7 +17,7 @@ pub trait PadControl {
 pub struct AlsaSeq {
     seq: seq::Seq,
     port: seq::Addr,
-    queue: i32
+    queue: i32,
 }
 
 impl AlsaSeq {
@@ -56,12 +57,12 @@ impl AlsaSeq {
 
         }
 
-        for note in 10..200 {
-            println!("note {}", note);
+        let mut rng = rand::thread_rng();
+        for note in 1..200 {
             let ev_note = seq::EvNote {
                 channel: 0,
                 note: note,
-                velocity: note,
+                velocity: rng.gen(),
                 off_velocity: 0,
                 duration: 0
             };
@@ -73,8 +74,8 @@ impl AlsaSeq {
             ev.set_tag(0);
             ev.schedule_tick(0, true, 0);
             self.seq.event_output(&mut ev)?;
-            self.seq.drain_output()?;
         }
+        self.seq.drain_output()?;
 
         Ok(())
     }
