@@ -13,15 +13,12 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         .about("Blinkenlights and macropad on the Launchpad")
         .get_matches();
 
-    let seq = alsa_midi::connect_alsaseq()?;
-    let mut input = seq.input();
+    let seq = alsa_midi::AlsaSeq::setup_alsaseq()?;
+    seq.connect_all()?;
     loop {
         thread::sleep(time::Duration::from_millis(1000));
         println!("Polling");
-        while input.event_input_pending(true)? != 0 {
-            let ev = input.event_input()?;
-            println!("{:#?}", ev);
-        }
+        seq.process_io()?;
     }
 
 }
