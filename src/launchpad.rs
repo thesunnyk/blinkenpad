@@ -48,69 +48,64 @@ impl PadLocation {
         assert!(n < 8);
         PadLocation::Numbers(n)
     }
-}
 
-pub trait PadHandler {
-    fn on_pad(&mut self, location: &PadLocation);
+    fn from_event(ev: &alsa_midi::Event) -> Option<PadLocation> {
+        match ev {
+            alsa_midi::Event::Note { note, velocity } => {
+                let x = note % 16;
+                let y = note >> 4;
+                if *velocity > 0 {
+                    Some(if x >= 8 {
+                        PadLocation::letter(y)
+                    } else {
+                        PadLocation::on_pad(x, y)
+                    })
+                } else {
+                    None
+                }
+            },
+            alsa_midi::Event::Control { param, value } => {
+                if *value > 0 {
+                    Some(PadLocation::number((param - 0x68).try_into().unwrap()))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn to_event(&self, colour: &PadColour) -> alsa_midi::Event {
+        match self {
+            PadLocation::OnPad(x, y) => alsa_midi::Event::Note {
+                note: x + y * 16,
+                velocity: colour.to_velocity(),
+            },
+            PadLocation::Letters(l) => alsa_midi::Event::Note {
+                note: (l * 16) + 8,
+                velocity: colour.to_velocity()
+            },
+            PadLocation::Numbers(n) => alsa_midi::Event::Control {
+                param: (0x68 + n).try_into().unwrap(),
+                value: colour.to_velocity().try_into().unwrap()
+            },
+        }
+    }
 }
 
 pub trait PadArea {
-    fn set_light(&mut self, location: PadLocation, colour: PadColour);
-    fn process_io(&mut self, handler: &mut dyn PadHandler) -> Result<(), Box<dyn Error>>;
-}
-
-pub struct NoteMigrator<'a> {
-    pad_handler: &'a mut dyn PadHandler
-}
-
-impl <'a> alsa_midi::NoteHandler for NoteMigrator<'a> {
-    fn on_note(&mut self, note: &alsa_midi::Note) {
-        let x = note.note % 16;
-        let y = note.note >> 4;
-        if note.velocity > 0 {
-            let location = if x >= 8 {
-                PadLocation::letter(y)
-            } else {
-                PadLocation::on_pad(x, y)
-            };
-            self.pad_handler.on_pad(&location);
-        }
-    }
-
-    fn on_control(&mut self, control: &alsa_midi::Control) {
-        if control.value > 0 {
-            let location = PadLocation::number((control.param - 0x68).try_into().unwrap());
-            self.pad_handler.on_pad(&location);
-        }
-    }
+    fn process_io(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<Vec<PadLocation>, Box<dyn Error>>;
 }
 
 pub struct LaunchPadMini<'a> {
-    pub alsa_seq: &'a mut dyn PadControl,
+     pub alsa_seq: &'a mut dyn PadControl,
 }
 
 impl PadArea for LaunchPadMini<'_> {
-    fn set_light(&mut self, location: PadLocation, colour: PadColour) {
-        match location {
-            PadLocation::OnPad(x, y) => self.alsa_seq.set_note(alsa_midi::Note {
-                note: x + y * 16,
-                velocity: colour.to_velocity(),
-            }),
-            PadLocation::Letters(l) => self.alsa_seq.set_note(alsa_midi::Note {
-                note: (l * 16) + 8,
-                velocity: colour.to_velocity()
-            }),
-            PadLocation::Numbers(n) => self.alsa_seq.set_control(alsa_midi::Control {
-                param: (0x68 + n).try_into().unwrap(),
-                value: colour.to_velocity().try_into().unwrap()
-            }),
-        }
-    }
 
-    fn process_io(&mut self, handler: &mut dyn PadHandler) -> Result<(), Box<dyn Error>>{
-        self.alsa_seq.process_io(&mut NoteMigrator {
-            pad_handler: handler
-        })
+    fn process_io(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<Vec<PadLocation>, Box<dyn Error>> {
+        let events = set_values.iter().map(|(x, y)| x.to_event(y)).collect();
+        Ok(self.alsa_seq.process_io(events)?.iter()
+            .filter_map(|x| PadLocation::from_event(x)).collect())
     }
 
 }
