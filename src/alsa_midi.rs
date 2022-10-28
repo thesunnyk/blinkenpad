@@ -1,7 +1,7 @@
 extern crate alsa;
 
 use alsa::seq;
-use std::error;
+use std::error::Error;
 use std::ffi::CString;
 
 #[derive(Debug)]
@@ -16,14 +16,14 @@ pub trait NoteHandler {
 
 pub trait PadControl {
     fn set_note(&mut self, note: Note);
-    fn note_handler(&mut self, handler: &dyn NoteHandler);
+    fn process_io(&mut self, handler: &dyn NoteHandler) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct AlsaSeq {
     seq: seq::Seq,
     port: seq::Addr,
     queue: i32,
-    notes: Vec<Note>
+    notes: Vec<Note>,
 }
 
 impl PadControl for AlsaSeq {
@@ -31,40 +31,21 @@ impl PadControl for AlsaSeq {
         self.notes.push(note);
     }
 
-    fn note_handler(&mut self, _handler: &dyn NoteHandler) {
-    }
-}
-
-impl AlsaSeq {
-    fn create_port_info() -> Result<seq::PortInfo, Box<dyn error::Error>> {
-        let mut dinfo = seq::PortInfo::empty()?;
-        dinfo.set_capability(seq::PortCap::WRITE | seq::PortCap::SUBS_WRITE |
-            seq::PortCap::READ | seq::PortCap::SUBS_READ);
-        dinfo.set_type(seq::PortType::MIDI_GENERIC | seq::PortType::APPLICATION);
-        dinfo.set_name(&CString::new("Blinkenport")?);
-        Ok(dinfo)
-    }
-
-    pub fn setup_alsaseq() -> Result<AlsaSeq, Box<dyn error::Error>> {
-        let seq = seq::Seq::open(None, None, true)?;
-        seq.set_client_name(&CString::new("Blinkenpad")?)?;
-
-        let port_info = AlsaSeq::create_port_info()?;
-        seq.create_port(&port_info)?;
-        let queue = seq.alloc_queue()?;
-        Ok(AlsaSeq {
-            seq: seq,
-            port: port_info.addr(),
-            queue: queue,
-            notes: Vec::new()
-        })
-    }
-
-    pub fn process_io(self: &mut AlsaSeq) -> Result<(), Box<dyn error::Error>> {
+    fn process_io(&mut self, handler: &dyn NoteHandler) -> Result<(), Box<dyn Error>> {
         let mut input = self.seq.input();
         while input.event_input_pending(true)? != 0 {
             let ev = input.event_input()?;
-            println!("{:#?}", ev);
+            match ev.get_type() {
+                seq::EventType::Noteon => {
+                    let ev_note = ev.get_data::<seq::EvNote>().ok_or("No note data")?;
+                    let note = Note {
+                        note: ev_note.note,
+                        velocity: ev_note.velocity
+                    };
+                    handler.on_note(&note)
+                },
+                _ => println!("{:#?}", ev),
+            }
         }
 
         for note in &self.notes {
@@ -90,8 +71,34 @@ impl AlsaSeq {
 
         Ok(())
     }
+}
 
-    pub fn drop_inputs(self: &AlsaSeq) -> Result<(), Box<dyn error::Error>> {
+impl AlsaSeq {
+    fn create_port_info() -> Result<seq::PortInfo, Box<dyn Error>> {
+        let mut dinfo = seq::PortInfo::empty()?;
+        dinfo.set_capability(seq::PortCap::WRITE | seq::PortCap::SUBS_WRITE |
+            seq::PortCap::READ | seq::PortCap::SUBS_READ);
+        dinfo.set_type(seq::PortType::MIDI_GENERIC | seq::PortType::APPLICATION);
+        dinfo.set_name(&CString::new("Blinkenport")?);
+        Ok(dinfo)
+    }
+
+    pub fn setup_alsaseq() -> Result<AlsaSeq, Box<dyn Error>> {
+        let seq = seq::Seq::open(None, None, true)?;
+        seq.set_client_name(&CString::new("Blinkenpad")?)?;
+
+        let port_info = AlsaSeq::create_port_info()?;
+        seq.create_port(&port_info)?;
+        let queue = seq.alloc_queue()?;
+        Ok(AlsaSeq {
+            seq: seq,
+            port: port_info.addr(),
+            queue: queue,
+            notes: Vec::new(),
+        })
+    }
+
+    pub fn drop_inputs(self: &AlsaSeq) -> Result<(), Box<dyn Error>> {
         let input = self.seq.input();
         while input.event_input_pending(true)? != 0 {
             input.drop_input()?;
@@ -100,7 +107,7 @@ impl AlsaSeq {
         Ok(())
     }
 
-    fn connect_input(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn error::Error>> {
+    fn connect_input(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn Error>> {
             let subs = seq::PortSubscribe::empty()?;
             subs.set_sender(port.addr());
             subs.set_dest(self.port);
@@ -109,7 +116,7 @@ impl AlsaSeq {
             Ok(())
     }
 
-    fn connect_output(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn error::Error>> {
+    fn connect_output(self: &AlsaSeq, port: &seq::PortInfo) -> Result<(), Box<dyn Error>> {
             let subs = seq::PortSubscribe::empty()?;
             subs.set_sender(self.port);
             subs.set_dest(port.addr());
@@ -118,7 +125,7 @@ impl AlsaSeq {
             Ok(())
     }
 
-    fn connect_ports(self: &AlsaSeq, client: &seq::ClientInfo) -> Result<(), Box<dyn error::Error>> {
+    fn connect_ports(self: &AlsaSeq, client: &seq::ClientInfo) -> Result<(), Box<dyn Error>> {
         for from_port in seq::PortIter::new(&self.seq, client.get_client()) {
             if from_port.get_capability().contains(seq::PortCap::NO_EXPORT) {
                 println!("Skipping connection to unroutable port.");
@@ -134,7 +141,7 @@ impl AlsaSeq {
         Ok(())
     }
 
-    fn find_launchpad(self: &AlsaSeq, info: &seq::ClientInfo) -> Result<(), Box<dyn error::Error>> {
+    fn find_launchpad(self: &AlsaSeq, info: &seq::ClientInfo) -> Result<(), Box<dyn Error>> {
         let name = info.get_name()?;
         if name == "Launchpad Mini" {
             println!("Found Launchpad: {}", name);
@@ -143,7 +150,7 @@ impl AlsaSeq {
         Ok(())
     }
 
-    pub fn connect_all(self: &AlsaSeq) -> Result<(), Box<dyn error::Error>> {
+    pub fn connect_all(self: &AlsaSeq) -> Result<(), Box<dyn Error>> {
         for from_info in seq::ClientIter::new(&self.seq) {
             self.find_launchpad(&from_info)?;
         }

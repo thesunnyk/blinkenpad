@@ -5,8 +5,16 @@ mod launchpad;
 
 use clap::App;
 use std::{ error, thread, time };
-use alsa_midi::PadControl;
 use launchpad::PadArea;
+
+struct PadLogger {
+}
+
+impl launchpad::PadHandler for PadLogger {
+    fn on_pad(&self, location: &launchpad::PadLocation) {
+        println!("Location: {:#?}", location);
+    }
+}
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let _matches = App::new("Blinkenpad")
@@ -14,6 +22,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         .author("Sunny Kalsi <thesunnyk@gmail.com>")
         .about("Blinkenlights and macropad on the Launchpad")
         .get_matches();
+
+    let logger = PadLogger {};
 
     let mut seq = alsa_midi::AlsaSeq::setup_alsaseq()?;
     seq.connect_all()?;
@@ -26,17 +36,9 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             launchpad::PadColour::new(0, 0));
         }
     }
-    pad.alsa_seq.process_io()?;
-    let mut i = 0;
+    pad.process_io(&logger)?;
     loop {
-        for y in 0..8 {
-            for x in 0..8 {
-                pad.set_light(launchpad::PadLocation::on_pad(x,y),
-                launchpad::PadColour::new(x / 2, y / 2));
-            }
-        }
-        i = i + 1;
-        pad.alsa_seq.process_io()?;
+        pad.process_io(&logger)?;
         println!("Polling");
         thread::sleep(time::Duration::from_millis(500));
     }

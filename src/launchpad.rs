@@ -1,8 +1,8 @@
 
 use crate::alsa_midi;
 
-use alsa_midi::PadControl;
 use std::error::Error;
+use alsa_midi::PadControl;
 
 pub struct PadColour {
     red: u8,
@@ -24,6 +24,7 @@ impl PadColour {
     }
 }
 
+#[derive(Debug)]
 pub enum PadLocation {
     OnPad(u8, u8),
     Letters(u8),
@@ -38,7 +39,7 @@ impl PadLocation {
         PadLocation::OnPad(x, y)
     }
 
-    pub fn on_letter(l: u8) -> PadLocation {
+    pub fn letter(l: u8) -> PadLocation {
         assert!(l < 8);
         PadLocation::Letters(l)
     }
@@ -50,11 +51,28 @@ pub trait PadHandler {
 
 pub trait PadArea {
     fn set_light(&mut self, location: PadLocation, colour: PadColour);
-    fn set_handler(&self, handler: &dyn PadHandler);
+    fn process_io(&mut self, handler: &dyn PadHandler) -> Result<(), Box<dyn Error>>;
+}
+
+pub struct NoteMigrator<'a> {
+    pad_handler: &'a dyn PadHandler
+}
+
+impl <'a> alsa_midi::NoteHandler for NoteMigrator<'a> {
+    fn on_note(&self, note: &alsa_midi::Note) {
+        let x = note.note % 16;
+        let y = note.note >> 4;
+        let location = if x >= 8 {
+            PadLocation::letter(y)
+        } else {
+            PadLocation::on_pad(x, y)
+        };
+        self.pad_handler.on_pad(&location);
+    }
 }
 
 pub struct LaunchPadMini<'a> {
-    pub alsa_seq: &'a mut alsa_midi::AlsaSeq
+    pub alsa_seq: &'a mut dyn PadControl,
 }
 
 impl PadArea for LaunchPadMini<'_> {
@@ -72,24 +90,18 @@ impl PadArea for LaunchPadMini<'_> {
         }
     }
 
-
-    fn set_handler(&self, handler: &dyn PadHandler) {
+    fn process_io(&mut self, handler: &dyn PadHandler) -> Result<(), Box<dyn Error>>{
+        self.alsa_seq.process_io(&NoteMigrator {
+            pad_handler: handler
+        })
     }
 
 }
 
-impl alsa_midi::NoteHandler for LaunchPadMini<'_> {
-    fn on_note(&self, note: &alsa_midi::Note) {
-        println!("note {:#?}", note);
-    }
-}
-
-impl LaunchPadMini<'_> {
-    pub fn new(seq: &mut alsa_midi::AlsaSeq) -> LaunchPadMini {
-        let mini = LaunchPadMini {
-            alsa_seq: seq
-        };
-        // seq.note_handler(&mini);
-        mini
+impl <'a> LaunchPadMini<'a> {
+    pub fn new(seq: &'a mut alsa_midi::AlsaSeq) -> LaunchPadMini<'a> {
+        LaunchPadMini {
+            alsa_seq: seq,
+        }
     }
 }
