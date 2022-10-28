@@ -3,21 +3,36 @@ extern crate alsa;
 use alsa::seq;
 use std::error;
 use std::ffi::CString;
-use rand::Rng;
+
+#[derive(Debug)]
+pub struct Note {
+    pub note: u8,
+    pub velocity: u8
+}
 
 pub trait NoteHandler {
-    fn on_note(&self);
+    fn on_note(&self, note: &Note);
 }
 
 pub trait PadControl {
-    fn set_note(&self, velocity: u8);
-    fn note_handler(&self, handler: &dyn NoteHandler);
+    fn set_note(&mut self, note: Note);
+    fn note_handler(&mut self, handler: &dyn NoteHandler);
 }
 
 pub struct AlsaSeq {
     seq: seq::Seq,
     port: seq::Addr,
     queue: i32,
+    notes: Vec<Note>
+}
+
+impl PadControl for AlsaSeq {
+    fn set_note(&mut self, note: Note) {
+        self.notes.push(note);
+    }
+
+    fn note_handler(&mut self, _handler: &dyn NoteHandler) {
+    }
 }
 
 impl AlsaSeq {
@@ -40,29 +55,23 @@ impl AlsaSeq {
         Ok(AlsaSeq {
             seq: seq,
             port: port_info.addr(),
-            queue: queue
+            queue: queue,
+            notes: Vec::new()
         })
     }
 
-    pub fn process_io(self: &AlsaSeq) -> Result<(), Box<dyn error::Error>> {
+    pub fn process_io(self: &mut AlsaSeq) -> Result<(), Box<dyn error::Error>> {
         let mut input = self.seq.input();
         while input.event_input_pending(true)? != 0 {
             let ev = input.event_input()?;
             println!("{:#?}", ev);
-            println!("{:#?}", ev.get_source());
-            println!("{:#?}", ev.get_dest());
-            println!("{:#?}", ev.get_time());
-            println!("{:#?}", ev.get_tick());
-            println!("Queue {:#?}", ev.get_queue());
-
         }
 
-        let mut rng = rand::thread_rng();
-        for note in 1..200 {
+        for note in &self.notes {
             let ev_note = seq::EvNote {
                 channel: 0,
-                note: note,
-                velocity: rng.gen(),
+                note: note.note,
+                velocity: note.velocity,
                 off_velocity: 0,
                 duration: 0
             };
@@ -75,6 +84,8 @@ impl AlsaSeq {
             ev.schedule_tick(0, true, 0);
             self.seq.event_output(&mut ev)?;
         }
+        self.notes.clear();
+
         self.seq.drain_output()?;
 
         Ok(())
