@@ -24,7 +24,7 @@ impl PadColour {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum PadLocation {
     OnPad(u8, u8),
     Letters(u8),
@@ -43,31 +43,45 @@ impl PadLocation {
         assert!(l < 8);
         PadLocation::Letters(l)
     }
+
+    pub fn number(n: u8) -> PadLocation {
+        assert!(n < 8);
+        PadLocation::Numbers(n)
+    }
 }
 
 pub trait PadHandler {
-    fn on_pad(&self, location: &PadLocation);
+    fn on_pad(&mut self, location: &PadLocation);
 }
 
 pub trait PadArea {
     fn set_light(&mut self, location: PadLocation, colour: PadColour);
-    fn process_io(&mut self, handler: &dyn PadHandler) -> Result<(), Box<dyn Error>>;
+    fn process_io(&mut self, handler: &mut dyn PadHandler) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct NoteMigrator<'a> {
-    pad_handler: &'a dyn PadHandler
+    pad_handler: &'a mut dyn PadHandler
 }
 
 impl <'a> alsa_midi::NoteHandler for NoteMigrator<'a> {
-    fn on_note(&self, note: &alsa_midi::Note) {
+    fn on_note(&mut self, note: &alsa_midi::Note) {
         let x = note.note % 16;
         let y = note.note >> 4;
-        let location = if x >= 8 {
-            PadLocation::letter(y)
-        } else {
-            PadLocation::on_pad(x, y)
-        };
-        self.pad_handler.on_pad(&location);
+        if note.velocity > 0 {
+            let location = if x >= 8 {
+                PadLocation::letter(y)
+            } else {
+                PadLocation::on_pad(x, y)
+            };
+            self.pad_handler.on_pad(&location);
+        }
+    }
+
+    fn on_control(&mut self, control: &alsa_midi::Control) {
+        if control.value > 0 {
+            let location = PadLocation::number((control.param - 0x68).try_into().unwrap());
+            self.pad_handler.on_pad(&location);
+        }
     }
 }
 
@@ -83,15 +97,18 @@ impl PadArea for LaunchPadMini<'_> {
                 velocity: colour.to_velocity(),
             }),
             PadLocation::Letters(l) => self.alsa_seq.set_note(alsa_midi::Note {
-                note: (l + 1) * 8,
+                note: (l * 16) + 8,
                 velocity: colour.to_velocity()
             }),
-            PadLocation::Numbers(n) => println!("Tried to set a number")
+            PadLocation::Numbers(n) => self.alsa_seq.set_control(alsa_midi::Control {
+                param: (0x68 + n).try_into().unwrap(),
+                value: colour.to_velocity().try_into().unwrap()
+            }),
         }
     }
 
-    fn process_io(&mut self, handler: &dyn PadHandler) -> Result<(), Box<dyn Error>>{
-        self.alsa_seq.process_io(&NoteMigrator {
+    fn process_io(&mut self, handler: &mut dyn PadHandler) -> Result<(), Box<dyn Error>>{
+        self.alsa_seq.process_io(&mut NoteMigrator {
             pad_handler: handler
         })
     }

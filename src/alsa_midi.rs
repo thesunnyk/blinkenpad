@@ -10,13 +10,20 @@ pub struct Note {
     pub velocity: u8
 }
 
+pub struct Control {
+    pub param: u32,
+    pub value: i32
+}
+
 pub trait NoteHandler {
-    fn on_note(&self, note: &Note);
+    fn on_note(&mut self, note: &Note);
+    fn on_control(&mut self, control: &Control);
 }
 
 pub trait PadControl {
+    fn set_control(&mut self, ctrl: Control);
     fn set_note(&mut self, note: Note);
-    fn process_io(&mut self, handler: &dyn NoteHandler) -> Result<(), Box<dyn Error>>;
+    fn process_io(&mut self, handler: &mut dyn NoteHandler) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct AlsaSeq {
@@ -24,6 +31,7 @@ pub struct AlsaSeq {
     port: seq::Addr,
     queue: i32,
     notes: Vec<Note>,
+    controls: Vec<Control>
 }
 
 impl PadControl for AlsaSeq {
@@ -31,7 +39,11 @@ impl PadControl for AlsaSeq {
         self.notes.push(note);
     }
 
-    fn process_io(&mut self, handler: &dyn NoteHandler) -> Result<(), Box<dyn Error>> {
+    fn set_control(&mut self, control: Control) {
+        self.controls.push(control);
+    }
+
+    fn process_io(&mut self, handler: &mut dyn NoteHandler) -> Result<(), Box<dyn Error>> {
         let mut input = self.seq.input();
         while input.event_input_pending(true)? != 0 {
             let ev = input.event_input()?;
@@ -44,6 +56,14 @@ impl PadControl for AlsaSeq {
                     };
                     handler.on_note(&note)
                 },
+                seq::EventType::Controller => {
+                    let ev_ctrl = ev.get_data::<seq::EvCtrl>().ok_or("No control data")?;
+                    let ctrl = Control {
+                        param: ev_ctrl.param,
+                        value: ev_ctrl.value
+                    };
+                    handler.on_control(&ctrl)
+                }
                 _ => println!("{:#?}", ev),
             }
         }
@@ -66,6 +86,23 @@ impl PadControl for AlsaSeq {
             self.seq.event_output(&mut ev)?;
         }
         self.notes.clear();
+
+        for control in &self.controls {
+            let ev_ctrl = seq::EvCtrl {
+                channel: 0,
+                param: control.param,
+                value: control.value
+            };
+            let mut ev = seq::Event::new(seq::EventType::Controller, &ev_ctrl);
+
+            ev.set_subs();
+            ev.set_source(self.port.port);
+            ev.set_queue(self.queue);
+            ev.set_tag(0);
+            ev.schedule_tick(0, true, 0);
+            self.seq.event_output(&mut ev)?;
+        }
+        self.controls.clear();
 
         self.seq.drain_output()?;
 
@@ -95,6 +132,7 @@ impl AlsaSeq {
             port: port_info.addr(),
             queue: queue,
             notes: Vec::new(),
+            controls: Vec::new()
         })
     }
 
