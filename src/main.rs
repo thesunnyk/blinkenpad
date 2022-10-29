@@ -2,10 +2,11 @@ extern crate clap;
 
 mod alsa_midi;
 mod launchpad;
+mod blinken;
 
 use clap::App;
 use std::{ error, thread, time };
-use launchpad::PadArea;
+use blinken::BlinkenPad;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
     let _matches = App::new("Blinkenpad")
@@ -17,30 +18,16 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let mut seq = alsa_midi::AlsaSeq::setup_alsaseq()?;
     seq.connect_all()?;
     let mut pad = launchpad::LaunchPadMini::new(&mut seq);
+    let mut blinken = BlinkenPad::new(&mut pad);
 
-    let mut commands = Vec::new();
+    let mut loopback = blinken::PadLoopback::new();
 
-    for y in 0..8 {
-        commands.push((launchpad::PadLocation::letter(y),
-            launchpad::PadColour::new(0, 0)));
-        commands.push((launchpad::PadLocation::number(y),
-            launchpad::PadColour::new(0, 0)));
-        for x in 0..8 {
-            commands.push((launchpad::PadLocation::on_pad(x,y),
-            launchpad::PadColour::new(0, 0)));
-        }
-    }
-    let mut result = pad.process_io(commands)?.into_iter()
-        .map(|r| (r, launchpad::PadColour::new(0, 0))).collect();
-    let mut green = 0;
-    let mut red = 0;
+    blinken.add_plugin(2, 2, 4, 4, Box::new(loopback));
+
+    blinken.clear_pad()?;
+
     loop {
-        red = (red + 1) % 4;
-        if red == 3 {
-            green = (green + 1) % 4;
-        }
-        result = pad.process_io(result)?.into_iter()
-            .map(|r| (r, launchpad::PadColour::new(red, green))).collect();
+        blinken.process_all()?;
         thread::sleep(time::Duration::from_millis(100));
     }
 

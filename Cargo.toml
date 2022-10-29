@@ -13,3 +13,6 @@ license = "GPL-3.0"
 [dependencies]
 alsa = "0.6.0"
 clap = "3.2.22"
+dbus = "0.9.5"
+mpris = "2.0.0-rc3"
+libxdo = "0.6.0"
