@@ -4,16 +4,42 @@ use launchpad::{ PadColour, LaunchPadMini, PadLocation, PadArea};
 use std::error::Error;
 
 /*
- * This keeps the current state of an area on the pad as well as dirty flags, and will pass those
- * onto the actual IO.
- * This is for the main pad area only. Letters and numbers are not counted.
+ * This keeps the current state of an area on the pad, and will pass those onto the actual IO.
  */
 struct PadMirror {
-    width: u8,
-    height: u8,
-    pad: Vec<PadColour>,
-    dirty: Vec<(u8, u8)>
+    pad: [PadColour;64],
+    letters: [PadColour;8],
+    numbers: [PadColour;8]
 }
+
+impl PadMirror {
+    fn new() -> PadMirror {
+        PadMirror {
+            pad: [PadColour::new(0,0); 64],
+            letters: [PadColour::new(0,0); 8],
+            numbers: [PadColour::new(0,0); 8],
+        }
+    }
+
+    fn minimise(&self, set_values: Vec<(PadLocation, PadColour)>) -> Vec<(PadLocation, PadColour)> {
+        set_values.into_iter().filter(|(loc, col)| match loc {
+            PadLocation::OnPad(x,y) => self.pad[(*x+*y*8) as usize] != *col,
+            PadLocation::Letters(l) => self.letters[*l as usize] != *col,
+            PadLocation::Numbers(n) => self.numbers[*n as usize] != *col
+        }).collect()
+    }
+
+    fn update(&mut self, set_values: &Vec<(PadLocation, PadColour)>) {
+        for (loc, col) in set_values {
+            match loc {
+                PadLocation::OnPad(x,y) => self.pad[(*x+*y*8) as usize] = *col,
+                PadLocation::Letters(l) => self.letters[*l as usize] = *col,
+                PadLocation::Numbers(n) => self.numbers[*n as usize] = *col
+            }
+        }
+    }
+}
+
 
 pub struct PadLoopback {
     locations: Vec<PadLocation>
@@ -60,12 +86,15 @@ impl PluginArea for PadPlugin {
     }
 
     fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>, Box<dyn Error>> {
-// TODO Translate values coming out
         let colours = self.area.process_output(tick)?;
         let mut result = Vec::new();
         for (l, c) in colours {
             let l2 = match l {
-                PadLocation::OnPad(x,y) => Ok(PadLocation::OnPad(x + self.x, y + self.y)),
+                PadLocation::OnPad(x,y) => if x < self.width && y < self.height {
+                    Ok(PadLocation::OnPad(x + self.x, y + self.y))
+                } else {
+                    Err("Outside valid area")
+                },
                 PadLocation::Letters(_) => Err("Not on Pad"),
                 PadLocation::Numbers(_) => Err("Not on Pad")
             }?;
@@ -97,6 +126,7 @@ impl PadPlugin {
 pub struct BlinkenPad<'a> {
     plugins: Vec<PadPlugin>,
     pad: &'a mut LaunchPadMini<'a>,
+    mirror: PadMirror,
     ticks: u32
 }
 
@@ -105,6 +135,7 @@ impl <'a> BlinkenPad<'a> {
         BlinkenPad::<'a> {
             plugins: Vec::new(),
             pad: pad,
+            mirror: PadMirror::new(),
             ticks: 0
         }
     }
@@ -127,23 +158,26 @@ impl <'a> BlinkenPad<'a> {
                 commands.push((PadLocation::on_pad(x,y), PadColour::new(0, 0)));
             }
         }
-        self.ticks += 1;
-        self.pad.process_io(self.ticks, commands)?;
-        Ok(())
+        self.mirror.update(&commands);
+        self.pad.process_in(commands)
     }
 
-    pub fn process_all(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn process_all(&mut self) -> Result<bool, Box<dyn Error>> {
         self.ticks += 1;
+        let out = self.pad.process_out()?;
+        for plugin in &mut self.plugins {
+            plugin.process_input(self.ticks, &out)?;
+        }
+
         let mut lights = Vec::new();
         for plugin in &mut self.plugins {
             lights.append(&mut plugin.process_output(self.ticks)?);
         }
-        let out = self.pad.process_io(self.ticks, lights)?;
-        for plugin in &mut self.plugins {
-            plugin.process_input(self.ticks, &out)?;
-        }
-        Ok(())
-        // TODO Split input and output
+        let min_lights = self.mirror.minimise(lights);
+
+        self.mirror.update(&min_lights);
+        self.pad.process_in(min_lights)?;
+        Ok(out.contains(&PadLocation::number(7)))
     }
 }
 

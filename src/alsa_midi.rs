@@ -69,7 +69,8 @@ impl Event {
 }
 
 pub trait PadControl {
-    fn process_io(&mut self, events: Vec<Event>) -> Result<Vec<Event>, Box<dyn Error>>;
+    fn process_out(&mut self) -> Result<Vec<Event>, Box<dyn Error>>;
+    fn process_in(&mut self, events: Vec<Event>) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct AlsaSeq {
@@ -79,16 +80,6 @@ pub struct AlsaSeq {
 }
 
 impl PadControl for AlsaSeq {
-
-    fn process_io(&mut self, events: Vec<Event>) -> Result<Vec<Event>, Box<dyn Error>> {
-
-        self.process_in(events)?;
-
-        self.process_out()
-    }
-}
-
-impl AlsaSeq {
 
     fn process_in(&mut self, events: Vec<Event>) -> Result<(), Box<dyn Error>> {
         for event in events {
@@ -110,6 +101,10 @@ impl AlsaSeq {
         }
         Ok(r_vec)
     }
+
+}
+
+impl AlsaSeq {
 
     fn create_port_info() -> Result<seq::PortInfo, Box<dyn Error>> {
         let mut dinfo = seq::PortInfo::empty()?;

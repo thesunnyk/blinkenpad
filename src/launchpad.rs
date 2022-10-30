@@ -4,6 +4,7 @@ use crate::alsa_midi;
 use std::error::Error;
 use alsa_midi::PadControl;
 
+#[derive(Copy, Clone, PartialEq)]
 pub struct PadColour {
     red: u8,
     green: u8
@@ -24,7 +25,7 @@ impl PadColour {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PadLocation {
     OnPad(u8, u8),
     Letters(u8),
@@ -93,7 +94,8 @@ impl PadLocation {
 }
 
 pub trait PadArea {
-    fn process_io(&mut self, tick: u32, set_values: Vec<(PadLocation, PadColour)>) -> Result<Vec<PadLocation>, Box<dyn Error>>;
+    fn process_in(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<(), Box<dyn Error>>;
+    fn process_out(&mut self) -> Result<Vec<PadLocation>, Box<dyn Error>>;
 }
 
 pub struct LaunchPadMini<'a> {
@@ -102,9 +104,13 @@ pub struct LaunchPadMini<'a> {
 
 impl PadArea for LaunchPadMini<'_> {
 
-    fn process_io(&mut self, _tick: u32, set_values: Vec<(PadLocation, PadColour)>) -> Result<Vec<PadLocation>, Box<dyn Error>> {
+    fn process_in(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<(), Box<dyn Error>> {
         let events = set_values.iter().map(|(x, y)| x.to_event(y)).collect();
-        Ok(self.alsa_seq.process_io(events)?.iter()
+        self.alsa_seq.process_in(events)
+    }
+
+    fn process_out(&mut self) -> Result<Vec<PadLocation>, Box<dyn Error>> {
+        Ok(self.alsa_seq.process_out()?.iter()
             .filter_map(|x| PadLocation::from_event(x)).collect())
     }
 
