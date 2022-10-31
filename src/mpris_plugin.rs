@@ -6,36 +6,28 @@ use std::time::Duration;
 use crate::blinken::PluginArea;
 use crate::launchpad::{PadLocation, PadColour};
 use mpris::{ PlayerFinder, Player, PlaybackStatus, FindingError, DBusError, LoopStatus, ProgressTracker};
+use anyhow::{ Context, Result };
 
 pub struct MprisPlugin {
     player: Option<Player>
 }
 
 impl MprisPlugin {
-    pub fn new() -> Result<MprisPlugin, Box<dyn Error>> {
+    pub fn new() -> Result<MprisPlugin> {
         Ok(MprisPlugin {
             player: None,
         })
     }
 
-    fn map_error(dbe: DBusError) -> Box<dyn Error> {
-        match dbe {
-            DBusError::TransportError(e) => Box::from(e),
-            DBusError::EnumParseError(e) => Box::from(e.as_str()),
-            DBusError::TypeMismatchError(e) => Box::from(e),
-            DBusError::Miscellaneous(e) => Box::from(e.as_str())
-        }
-    }
-
-    fn get_active_player() -> Result<Option<Player>, Box<dyn Error>> {
+    fn get_active_player() -> Result<Option<Player>> {
         let finder = PlayerFinder::new()?;
         finder.find_active().map(|p| Some(p)).or_else(|e| match e {
                 FindingError::NoPlayerFound => Ok(None),
-                FindingError::DBusError(dbe) => Err(MprisPlugin::map_error(dbe))
+                FindingError::DBusError(dbe) => Err(dbe).context("Can't find player")
             })
     }
 
-    fn refresh_active(&mut self) -> Result<&Option<Player>, Box<dyn Error>> {
+    fn refresh_active(&mut self) -> Result<&Option<Player>> {
         match &self.player {
             Some(p) => if !p.is_running() { self.player = MprisPlugin::get_active_player()? },
             None => { self.player = MprisPlugin::get_active_player()? }
@@ -43,7 +35,7 @@ impl MprisPlugin {
         Ok(&self.player)
     }
 
-    fn command(p: &Player, x: u8) -> Result<(), Box<dyn Error>> {
+    fn command(p: &Player, x: u8) -> Result<()> {
         match x {
             0 => p.previous(),
             1 => p.seek_backwards(&Duration::from_secs(5)),
@@ -54,12 +46,12 @@ impl MprisPlugin {
             6 => p.seek_forwards(&Duration::from_secs(5)),
             7 => p.next(),
             _ => Err(DBusError::Miscellaneous("Invalid button press".to_string()))
-        }.or_else(|e| Err(MprisPlugin::map_error(e)))
+        }.context("While running command")
     }
 }
 
 impl PluginArea for MprisPlugin {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<(), Box<dyn Error>> {
+    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         let active = self.refresh_active()?;
         match active {
             Some(p) =>
@@ -75,7 +67,7 @@ impl PluginArea for MprisPlugin {
         Ok(())
     }
 
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>, Box<dyn Error>> {
+    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
         let active = self.refresh_active()?;
         let mut result = Vec::new();
         match active {

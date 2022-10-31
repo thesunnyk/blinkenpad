@@ -1,7 +1,7 @@
 
 use crate::alsa_midi;
 
-use std::error::Error;
+use anyhow::Result;
 use alsa_midi::PadControl;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -94,8 +94,8 @@ impl PadLocation {
 }
 
 pub trait PadArea {
-    fn process_in(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<(), Box<dyn Error>>;
-    fn process_out(&mut self) -> Result<Vec<PadLocation>, Box<dyn Error>>;
+    fn process_in(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<()>;
+    fn process_out(&mut self) -> Result<Vec<PadLocation>>;
 }
 
 pub struct LaunchPadMini<'a> {
@@ -104,12 +104,12 @@ pub struct LaunchPadMini<'a> {
 
 impl PadArea for LaunchPadMini<'_> {
 
-    fn process_in(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<(), Box<dyn Error>> {
+    fn process_in(&mut self, set_values: Vec<(PadLocation, PadColour)>) -> Result<()> {
         let events = set_values.iter().map(|(x, y)| x.to_event(y)).collect();
         self.alsa_seq.process_in(events)
     }
 
-    fn process_out(&mut self) -> Result<Vec<PadLocation>, Box<dyn Error>> {
+    fn process_out(&mut self) -> Result<Vec<PadLocation>> {
         Ok(self.alsa_seq.process_out()?.iter()
             .filter_map(|x| PadLocation::from_event(x)).collect())
     }

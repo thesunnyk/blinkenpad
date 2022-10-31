@@ -1,7 +1,7 @@
 
 use crate::launchpad;
 use launchpad::{ PadColour, LaunchPadMini, PadLocation, PadArea};
-use std::error::Error;
+use anyhow::{ Context, Result, Error };
 
 /*
  * This keeps the current state of an area on the pad, and will pass those onto the actual IO.
@@ -54,18 +54,18 @@ impl PadLoopback {
 }
 
 impl PluginArea for PadLoopback {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<(), Box<dyn Error>> {
+    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         self.locations = set_values.clone();
         Ok(())
     }
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>, Box<dyn Error>> {
+    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
         Ok(self.locations.iter().map(|l| (l.clone(), PadColour::new(3,0))).collect())
     }
 }
 
 pub trait PluginArea {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<(), Box<dyn Error>>;
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>, Box<dyn Error>>;
+    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()>;
+    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>>;
 }
 
 struct PadPlugin {
@@ -77,7 +77,7 @@ struct PadPlugin {
 }
 
 impl PluginArea for PadPlugin {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<(), Box<dyn Error>> {
+    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         self.area.process_input(tick,
             &set_values.into_iter()
             .filter_map(|loc| self.translate(&loc))
@@ -85,7 +85,7 @@ impl PluginArea for PadPlugin {
         ) 
     }
 
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>, Box<dyn Error>> {
+    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
         let colours = self.area.process_output(tick)?;
         let mut result = Vec::new();
         for (l, c) in colours {
@@ -93,10 +93,10 @@ impl PluginArea for PadPlugin {
                 PadLocation::OnPad(x,y) => if x < self.width && y < self.height {
                     Ok(PadLocation::OnPad(x + self.x, y + self.y))
                 } else {
-                    Err("Outside valid area")
+                    Err(Error::msg("Outside valid area"))
                 },
-                PadLocation::Letters(_) => Err("Not on Pad"),
-                PadLocation::Numbers(_) => Err("Not on Pad")
+                PadLocation::Letters(_) => Err(Error::msg("Not on Pad")),
+                PadLocation::Numbers(_) => Err(Error::msg("Not on Pad"))
             }?;
             result.push((l2, c));
         }
@@ -148,7 +148,7 @@ impl <'a> BlinkenPad<'a> {
         );
     }
 
-    pub fn clear_pad(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn clear_pad(&mut self) -> Result<()> {
         let mut commands = Vec::new();
 
         for y in 0..8 {
@@ -162,7 +162,7 @@ impl <'a> BlinkenPad<'a> {
         self.pad.process_in(commands)
     }
 
-    pub fn process_all(&mut self) -> Result<bool, Box<dyn Error>> {
+    pub fn process_all(&mut self) -> Result<bool> {
         self.ticks += 1;
         let out = self.pad.process_out()?;
         for plugin in &mut self.plugins {

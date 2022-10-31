@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate anyhow;
 
 mod alsa_midi;
 mod launchpad;
@@ -7,11 +8,12 @@ mod xdo_plugin;
 mod mpris_plugin;
 
 use clap::App;
-use std::{ error, thread, time };
+use std::{ thread, time };
+use anyhow::Result;
 use blinken::BlinkenPad;
 use launchpad::PadColour;
 
-fn main() -> Result<(), Box<dyn error::Error>> {
+fn main() -> Result<()> {
     let _matches = App::new("Blinkenpad")
         .version("0.1.0")
         .author("Sunny Kalsi <thesunnyk@gmail.com>")

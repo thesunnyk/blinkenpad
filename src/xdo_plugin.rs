@@ -2,9 +2,9 @@
 extern crate libxdo;
 
 use libxdo::XDo;
-use std::error::Error;
 use crate::blinken::PluginArea;
 use crate::launchpad::{PadLocation, PadColour};
+use anyhow::Result;
 
 pub struct XdoPlugin {
     xdo: XDo,
@@ -13,7 +13,7 @@ pub struct XdoPlugin {
 }
 
 impl XdoPlugin {
-    pub fn new(colours: Vec<PadColour>, keys: Vec<String>) -> Result<XdoPlugin, Box<dyn Error>> {
+    pub fn new(colours: Vec<PadColour>, keys: Vec<String>) -> Result<XdoPlugin> {
         Ok(XdoPlugin {
             xdo: XDo::new(None)?,
             colours: colours,
@@ -23,7 +23,7 @@ impl XdoPlugin {
 }
 
 impl PluginArea for XdoPlugin {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<(), Box<dyn Error>> {
+    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         for value in set_values {
             match value {
                 PadLocation::OnPad(x,y) => self.xdo.send_keysequence(&self.keys[*x as usize], 0)?,
@@ -34,7 +34,7 @@ impl PluginArea for XdoPlugin {
         Ok(())
     }
 
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>, Box<dyn Error>> {
+    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
         let mut result = Vec::new();
         let mut x = 0;
         for c in &self.colours {
