@@ -4,6 +4,7 @@ mod alsa_midi;
 mod launchpad;
 mod blinken;
 mod xdo_plugin;
+mod mpris_plugin;
 
 use clap::App;
 use std::{ error, thread, time };
@@ -27,9 +28,11 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         vec![PadColour::new(0,3), PadColour::new(3,0), PadColour::new(3,3)],
         vec!["super".to_string(), "control+c".to_string(), "control+v".to_string()]
         )?;
+    let mpris = mpris_plugin::MprisPlugin::new()?;
 
-    blinken.add_plugin(2, 2, 4, 4, Box::new(loopback));
+    blinken.add_plugin(2, 3, 4, 4, Box::new(loopback));
     blinken.add_plugin(0, 0, 3, 1, Box::new(xdo));
+    blinken.add_plugin(0, 1, 8, 2, Box::new(mpris));
 
     blinken.clear_pad()?;
 
