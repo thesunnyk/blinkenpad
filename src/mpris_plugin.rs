@@ -4,7 +4,8 @@ extern crate mpris;
 use std::time::Duration;
 use crate::blinken::PluginArea;
 use crate::launchpad::{PadLocation, PadColour};
-use mpris::{ PlayerFinder, Player, PlaybackStatus, FindingError, DBusError, LoopStatus, ProgressTracker};
+use mpris::{ PlayerFinder, Player, PlaybackStatus, FindingError, DBusError, LoopStatus,
+             MetadataValue, TrackID };
 use anyhow::{ Context, Result, Error };
 
 pub struct MprisPlugin {
@@ -36,16 +37,41 @@ impl MprisPlugin {
 
     fn command(p: &Player, x: u8) -> Result<()> {
         match x {
-            0 => p.previous(),
-            1 => p.seek_backwards(&Duration::from_secs(5)),
-            2 => p.play_pause(),
-            3 => p.stop(),
-            4 => p.set_loop_status(LoopStatus::None),
-            5 => p.set_shuffle(false),
-            6 => p.seek_forwards(&Duration::from_secs(5)),
-            7 => p.next(),
+            0 => p.checked_previous(),
+            1 => p.checked_seek_backwards(&Duration::from_secs(5)),
+            2 => p.checked_play_pause(),
+            3 => p.checked_stop(),
+            4 => p.checked_set_loop_status(LoopStatus::None),
+            5 => p.checked_set_shuffle(false),
+            6 => p.checked_seek_forwards(&Duration::from_secs(5)),
+            7 => p.checked_next(),
             _ => Err(DBusError::Miscellaneous("Invalid button press".to_string()))
-        }.context("While running command")
+        }.context("While running command")?;
+        Ok(())
+    }
+
+    fn current_track(p: &Player) -> Result<Option<TrackID>> {
+        match p.get_metadata()?.get("mpris:trackid") {
+            Some(MetadataValue::String(t)) => mpris::TrackID::new(t).map(|t| Some(t))
+                .map_err(|e| Error::msg(e)),
+            _ => Ok(None)
+        }
+    }
+
+    fn seek(p: &Player, x: u8) -> Result<()> {
+
+        let mut tracker = p.track_progress(100)?;
+        let progress = tracker.tick().progress;
+        let perc = x as f64 / 8f64;
+
+        match MprisPlugin::current_track(p)? {
+            Some(track_id) => match progress.length() {
+                Some(l) => p.checked_set_position(track_id, &l.mul_f64(perc)),
+                None => Ok(false)
+            },
+            None => Ok(false)
+        }?;
+        Ok(())
     }
 
     fn render_controls(tick: u32, status: PlaybackStatus) -> Vec<(PadLocation, PadColour)> {
@@ -55,7 +81,7 @@ impl MprisPlugin {
         // rewind
         result.push((PadLocation::on_pad(1, 0), PadColour::new(2,2)));
         // playpause
-        let flash = ((tick / 5) % 4) as u8;
+        let flash = if ((tick / 5) % 2) == 0 { 3u8 } else { 0u8};
         let playpausecolour = match status {
             PlaybackStatus::Playing => PadColour::new(0, flash),
             PlaybackStatus::Paused => PadColour::new(flash, flash),
@@ -78,7 +104,7 @@ impl MprisPlugin {
         let mut result = Vec::new();
         match progress.length() {
             Some(d) => {
-                let pos = (progress.position().as_secs() * 8 / d.as_secs() + 1) as u8;
+                let pos = (progress.position().as_secs() * 8 / d.as_secs()) as u8;
                 for i in 0u8..8 {
                     let col = if i < pos {
                         PadColour::new(1,0)
@@ -91,7 +117,7 @@ impl MprisPlugin {
                 }
             },
             None => {
-                let pos = ((tick / 5) % 8) as u8;
+                let pos = ((tick / 10) % 8) as u8;
                 for i in 0u8..8 {
                     let col = if i == pos {
                         PadColour::new(3,0)
@@ -116,7 +142,7 @@ impl PluginArea for MprisPlugin {
                 match value {
                     PadLocation::OnPad(x,y) => match y {
                         0 => MprisPlugin::command(p, *x)?,
-                        1 => Err(Error::msg("TODO Duration support"))?,
+                        1 => MprisPlugin::seek(p, *x)?,
                         _ => Err(Error::msg("Only supports two lines"))?
                     },
                     PadLocation::Letters(_) => panic!("Invalid letter pad press in plugin"),
@@ -134,7 +160,7 @@ impl PluginArea for MprisPlugin {
         match active {
             Some(p) => {
                 result.append(&mut MprisPlugin::render_controls(tick, p.get_playback_status()?));
-                let mut tracker = p.track_progress(1000)?;
+                let mut tracker = p.track_progress(100)?;
 
                 let progress = tracker.tick().progress;
                 result.append(&mut MprisPlugin::render_progress(tick, progress)?);
