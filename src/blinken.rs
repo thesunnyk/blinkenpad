@@ -1,7 +1,7 @@
 
 use crate::launchpad;
 use launchpad::{ PadColour, LaunchPadMini, PadLocation, PadArea};
-use anyhow::{ Result, Error };
+use anyhow::{ Result, Error, Context };
 
 /*
  * This keeps the current state of an area on the pad, and will pass those onto the actual IO.
@@ -166,12 +166,12 @@ impl <'a> BlinkenPad<'a> {
         self.ticks += 1;
         let out = self.pad.process_out()?;
         for plugin in &mut self.plugins {
-            plugin.process_input(self.ticks, &out)?;
+            plugin.process_input(self.ticks, &out).context("On plugin input")?;
         }
 
         let mut lights = Vec::new();
         for plugin in &mut self.plugins {
-            lights.append(&mut plugin.process_output(self.ticks)?);
+            lights.append(&mut plugin.process_output(self.ticks).context("On plugin output")?);
         }
         let min_lights = self.mirror.minimise(lights);
 

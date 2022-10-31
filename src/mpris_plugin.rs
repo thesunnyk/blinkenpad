@@ -27,10 +27,14 @@ impl MprisPlugin {
             })
     }
 
-    fn refresh_active(&mut self) -> Result<&Option<Player>> {
+    fn refresh_active(&mut self, tick: u32) -> Result<&Option<Player>> {
         match &self.player {
-            Some(p) => if !p.is_running() { self.player = MprisPlugin::get_active_player()? },
-            None => { self.player = MprisPlugin::get_active_player()? }
+            Some(p) => if !p.is_running() { self.player = MprisPlugin::get_active_player()?; },
+            None => {
+                if tick % 20 == 0 {
+                    self.player = MprisPlugin::get_active_player()?;
+                }
+            }
         }
         Ok(&self.player)
     }
@@ -107,11 +111,11 @@ impl MprisPlugin {
                 let pos = (progress.position().as_secs() * 8 / d.as_secs()) as u8;
                 for i in 0u8..8 {
                     let col = if i < pos {
-                        PadColour::new(1,0)
+                        PadColour::new(0,1)
                     } else if i == pos {
-                        PadColour::new(3,0)
+                        PadColour::new(1,3)
                     } else {
-                        PadColour::new(1,0)
+                        PadColour::new(1,1)
                     };
                     result.push((PadLocation::on_pad(i,1), col));
                 }
@@ -131,11 +135,21 @@ impl MprisPlugin {
         Ok(result)
     }
 
+    fn render_with_player(tick: u32, p: &Player) -> Result<Vec<(PadLocation, PadColour)>> {
+        let mut result = Vec::new();
+        result.append(&mut MprisPlugin::render_controls(tick, p.get_playback_status()
+                .context("Get playback status")?));
+        let mut tracker = p.track_progress(100)?;
+
+        let progress = tracker.tick().progress;
+        result.append(&mut MprisPlugin::render_progress(tick, progress).context("Progress")?);
+        Ok(result)
+    }
 }
 
 impl PluginArea for MprisPlugin {
-    fn process_input(&mut self, _tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
-        let active = self.refresh_active()?;
+    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
+        let active = self.refresh_active(tick).context("While refreshing")?;
         match active {
             Some(p) =>
             for value in set_values {
@@ -155,24 +169,20 @@ impl PluginArea for MprisPlugin {
     }
 
     fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
-        let active = self.refresh_active()?;
-        let mut result = Vec::new();
+        let active = self.refresh_active(tick).context("While refreshing on output")?;
         match active {
             Some(p) => {
-                result.append(&mut MprisPlugin::render_controls(tick, p.get_playback_status()?));
-                let mut tracker = p.track_progress(100)?;
-
-                let progress = tracker.tick().progress;
-                result.append(&mut MprisPlugin::render_progress(tick, progress)?);
+                MprisPlugin::render_with_player(tick, p).or(Ok(Vec::new()))
             },
             None => {
+                let mut result = Vec::new();
                 for i in 0..8 {
-                    result.push((PadLocation::on_pad(i,0), PadColour::new(3,0)));
+                    result.push((PadLocation::on_pad(i,0), PadColour::new(1,0)));
+                    result.push((PadLocation::on_pad(i,1), PadColour::new(1,0)));
                 }
+                Ok(result)
             }
         }
-
-        Ok(result)
     }
 }
 
