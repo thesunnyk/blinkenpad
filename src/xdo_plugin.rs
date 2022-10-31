@@ -4,7 +4,7 @@ extern crate libxdo;
 use libxdo::XDo;
 use crate::blinken::PluginArea;
 use crate::launchpad::{PadLocation, PadColour};
-use anyhow::Result;
+use anyhow::{ Result, Error };
 
 pub struct XdoPlugin {
     xdo: XDo,
@@ -23,10 +23,13 @@ impl XdoPlugin {
 }
 
 impl PluginArea for XdoPlugin {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
+    fn process_input(&mut self, _tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         for value in set_values {
             match value {
-                PadLocation::OnPad(x,y) => self.xdo.send_keysequence(&self.keys[*x as usize], 0)?,
+                PadLocation::OnPad(x,y) => match y {
+                    0 => self.xdo.send_keysequence(&self.keys[*x as usize], 0)?,
+                    _ => Err(Error::msg("Only supports one line"))?,
+                },
                 PadLocation::Letters(_) => panic!("Invalid letter pad press in plugin"),
                 PadLocation::Numbers(_) => panic!("Invalid number pad press in plugin"),
             }
@@ -34,7 +37,7 @@ impl PluginArea for XdoPlugin {
         Ok(())
     }
 
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
+    fn process_output(&mut self, _tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
         let mut result = Vec::new();
         let mut x = 0;
         for c in &self.colours {

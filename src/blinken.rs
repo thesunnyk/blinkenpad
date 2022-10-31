@@ -1,7 +1,7 @@
 
 use crate::launchpad;
 use launchpad::{ PadColour, LaunchPadMini, PadLocation, PadArea};
-use anyhow::{ Context, Result, Error };
+use anyhow::{ Result, Error };
 
 /*
  * This keeps the current state of an area on the pad, and will pass those onto the actual IO.
@@ -54,11 +54,11 @@ impl PadLoopback {
 }
 
 impl PluginArea for PadLoopback {
-    fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
+    fn process_input(&mut self, _tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         self.locations = set_values.clone();
         Ok(())
     }
-    fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
+    fn process_output(&mut self, _tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
         Ok(self.locations.iter().map(|l| (l.clone(), PadColour::new(3,0))).collect())
     }
 }
