@@ -6,6 +6,7 @@ mod launchpad;
 mod blinken;
 mod xdo_plugin;
 mod mpris_plugin;
+mod mixer_plugin;
 
 use clap::App;
 use std::{ thread, time };
@@ -25,16 +26,18 @@ fn main() -> Result<()> {
     let mut pad = launchpad::LaunchPadMini::new(&mut seq);
     let mut blinken = BlinkenPad::new(&mut pad);
 
-    let loopback = blinken::PadLoopback::new();
     let xdo = xdo_plugin::XdoPlugin::new(
-        vec![PadColour::new(0,3), PadColour::new(3,0), PadColour::new(3,3)],
-        vec!["super".to_string(), "control+c".to_string(), "control+v".to_string()]
+        vec![PadColour::new(0,3), PadColour::new(2,2), PadColour::new(1,2), PadColour::new(3,0),
+        PadColour::new(0,3)],
+        vec!["super".to_string(), "control+c".to_string(), "control+v".to_string(), "alt+a".to_string(),
+        "alt+v".to_string()]
         )?;
     let mpris = mpris_plugin::MprisPlugin::new()?;
+    let mixer = mixer_plugin::MixerPlugin::new()?;
 
-    blinken.add_plugin(2, 3, 4, 4, Box::new(loopback));
-    blinken.add_plugin(0, 0, 3, 1, Box::new(xdo));
-    blinken.add_plugin(0, 1, 8, 2, Box::new(mpris));
+    blinken.add_plugin(0, 7, 5, 1, Box::new(xdo));
+    blinken.add_plugin(0, 5, 8, 2, Box::new(mpris));
+    blinken.add_plugin(0, 3, 8, 2, Box::new(mixer));
 
     blinken.clear_pad()?;
 

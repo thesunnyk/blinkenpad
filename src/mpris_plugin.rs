@@ -104,7 +104,7 @@ impl MprisPlugin {
         result
     }
 
-    fn render_progress(tick: u32, progress: &mpris::Progress) -> Result<Vec<(PadLocation, PadColour)>> {
+    fn render_progress(tick: u32, progress: &mpris::Progress, status: PlaybackStatus) -> Result<Vec<(PadLocation, PadColour)>> {
         let mut result = Vec::new();
         match progress.length() {
             Some(d) => {
@@ -123,7 +123,7 @@ impl MprisPlugin {
             None => {
                 let pos = ((tick / 10) % 8) as u8;
                 for i in 0u8..8 {
-                    let col = if i == pos {
+                    let col = if i == pos && status == PlaybackStatus::Playing {
                         PadColour::new(3,0)
                     } else {
                         PadColour::new(1,1)
@@ -137,12 +137,12 @@ impl MprisPlugin {
 
     fn render_with_player(tick: u32, p: &Player) -> Result<Vec<(PadLocation, PadColour)>> {
         let mut result = Vec::new();
-        result.append(&mut MprisPlugin::render_controls(tick, p.get_playback_status()
-                .context("Get playback status")?));
+        let status = p.get_playback_status().context("Get playback status")?;
+        result.append(&mut MprisPlugin::render_controls(tick, status));
         let mut tracker = p.track_progress(100)?;
 
         let progress = tracker.tick().progress;
-        result.append(&mut MprisPlugin::render_progress(tick, progress).context("Progress")?);
+        result.append(&mut MprisPlugin::render_progress(tick, progress, status).context("Progress")?);
         Ok(result)
     }
 }

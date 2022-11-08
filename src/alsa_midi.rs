@@ -1,6 +1,6 @@
 extern crate alsa;
 
-use anyhow::Result;
+use anyhow::{ Result, Error };
 use alsa::seq;
 use std::ffi::CString;
 
@@ -94,9 +94,19 @@ impl PadControl for AlsaSeq {
         let mut input = self.seq.input();
         let mut r_vec = Vec::new();
         while input.event_input_pending(true)? != 0 {
-            match Event::from_alsa_event(&input.event_input()?) {
+            let event = input.event_input()?;
+            match Event::from_alsa_event(&event) {
                 Some(ev) => r_vec.push(ev),
-                None => {}
+                None => {
+                    match event.get_type() {
+                        seq::EventType::PortStart => {
+                            let addr: seq::Addr = event.get_data().ok_or(Error::msg("no address"))?;
+                            let info = self.seq.get_any_client_info(addr.client)?;
+                            self.find_launchpad(&info)?;
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
         Ok(r_vec)
@@ -174,7 +184,7 @@ impl AlsaSeq {
 
     fn find_launchpad(self: &AlsaSeq, info: &seq::ClientInfo) -> Result<()> {
         let name = info.get_name()?;
-        if name == "Launchpad Mini" {
+        if name == "Launchpad Mini" || name == "System" {
             println!("Found Launchpad: {}", name);
             self.connect_ports(info)?;
         }

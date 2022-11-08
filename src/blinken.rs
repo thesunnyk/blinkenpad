@@ -29,6 +29,18 @@ impl PadMirror {
         }).collect()
     }
 
+    fn clear(&mut self) {
+        for i in 0..self.pad.len() {
+            self.pad[i] = PadColour::new(0,0);
+        }
+        for i in 0..self.letters.len() {
+            self.letters[i] = PadColour::new(0,0);
+        }
+        for i in 0..self.numbers.len() {
+            self.numbers[i] = PadColour::new(0,0);
+        }
+    }
+
     fn update(&mut self, set_values: &Vec<(PadLocation, PadColour)>) {
         for (loc, col) in set_values {
             match loc {
@@ -172,6 +184,9 @@ impl <'a> BlinkenPad<'a> {
         let mut lights = Vec::new();
         for plugin in &mut self.plugins {
             lights.append(&mut plugin.process_output(self.ticks).context("On plugin output")?);
+        }
+        if self.ticks % 50 == 0 {
+            self.mirror.clear();
         }
         let min_lights = self.mirror.minimise(lights);
 
