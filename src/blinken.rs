@@ -80,15 +80,15 @@ pub trait PluginArea {
     fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>>;
 }
 
-struct PadPlugin {
+struct PadPlugin<'a> {
     x: u8,
     y: u8,
     width: u8,
     height: u8,
-    area: Box<dyn PluginArea>
+    area: Box<dyn PluginArea + 'a>
 }
 
-impl PluginArea for PadPlugin {
+impl PluginArea for PadPlugin<'_> {
     fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
         self.area.process_input(tick,
             &set_values.into_iter()
@@ -116,7 +116,7 @@ impl PluginArea for PadPlugin {
     }
 }
 
-impl PadPlugin {
+impl PadPlugin<'_> {
     fn translate(&self, loc: &PadLocation) -> Option<PadLocation> {
         match loc {
             PadLocation::Letters(_) => None,
@@ -136,7 +136,7 @@ impl PadPlugin {
  * The entire blinkenPad with plugins etc.
  */
 pub struct BlinkenPad<'a> {
-    plugins: Vec<PadPlugin>,
+    plugins: Vec<PadPlugin<'a>>,
     pad: &'a mut LaunchPadMini<'a>,
     mirror: PadMirror,
     ticks: u32
@@ -152,12 +152,16 @@ impl <'a> BlinkenPad<'a> {
         }
     }
 
-    pub fn add_plugin(&mut self, x: u8, y: u8, width: u8, height: u8, area: Box<dyn PluginArea>) {
+    pub fn add_plugin(&mut self, x: u8, y: u8, width: u8, height: u8, area: Box<dyn PluginArea + 'a>) {
         self.plugins.push(
             PadPlugin {
                 x: x, y: y, width: width, height: height, area: area
             }
         );
+    }
+
+    pub fn cleanup(&mut self) {
+        self.plugins.clear();
     }
 
     pub fn clear_pad(&mut self) -> Result<()> {
