@@ -15,7 +15,9 @@ pub struct MixerPlugin<'a> {
 
 impl <'a> MixerPlugin<'a> {
     pub fn mixer() -> Result<Mixer> {
-        Ok(Mixer::new("pulse", true)?)
+        let mut mixer = Mixer::new("pulse", true)?;
+        // Selem::register(&mut mixer);
+        Ok(mixer)
     }
 
     pub fn init(mixer: &'a Mixer) -> Result<MixerPlugin<'a>> {
@@ -35,6 +37,29 @@ impl <'a> MixerPlugin<'a> {
 
 impl PluginArea for MixerPlugin<'_> {
     fn process_input(&mut self, tick: u32, set_values: &Vec<PadLocation>) -> Result<()> {
+        for val in set_values {
+            match val {
+                PadLocation::OnPad(x,y) => {
+                    match y {
+                        0 => {
+                            let (play_min, play_max) = self.master.get_playback_volume_range();
+                            let play_set =  ((*x as i64 + 1)* (play_max - play_min)) / 8;
+
+                            self.master.set_playback_volume_all(play_set)?;
+                        },
+                        1 => {
+                            let (cap_min, cap_max) = self.capture.get_capture_volume_range();
+                            let cap_set =  ((*x as i64 + 1) * (cap_max - cap_min)) / 8;
+
+                            self.capture.set_capture_volume(SelemChannelId::FrontLeft, cap_set)?;
+                        },
+                        _ => panic!("unknown button")
+                    }
+                },
+                PadLocation::Letters(_) => panic!("Cannot handle letters yet"),
+                PadLocation::Numbers(_) => panic!("Cannot handle numbers"),
+            }
+        }
 
         Ok(())
     }
@@ -53,14 +78,14 @@ impl PluginArea for MixerPlugin<'_> {
         let cap_bar = ((cap_cur * 8) / (cap_max - cap_min)) as u8;
 
         for i in 0..8u8 {
-            let play_col = if i <= play_bar {
+            let play_col = if i < play_bar {
                 PadColour::new(0,3)
             } else {
                 PadColour::new(0,0)
             };
             result.push((PadLocation::OnPad(i, 0), play_col));
 
-            let cap_col = if i <= cap_bar {
+            let cap_col = if i < cap_bar {
                 PadColour::new(2,1)
             } else {
                 PadColour::new(0,0)
@@ -68,6 +93,7 @@ impl PluginArea for MixerPlugin<'_> {
             result.push((PadLocation::OnPad(i, 1), cap_col));
         }
 
+        // TODO Add letter when it is supported
         Ok(result)
     }
 }
