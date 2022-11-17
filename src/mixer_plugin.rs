@@ -65,6 +65,7 @@ impl PluginArea for MixerPlugin<'_> {
     }
 
     fn process_output(&mut self, tick: u32) -> Result<Vec<(PadLocation, PadColour)>> {
+        self.mixer.handle_events()?;
 
         let (cap_min, cap_max) = self.capture.get_capture_volume_range();
         let cap_cur = self.capture.get_capture_volume(SelemChannelId::FrontLeft)?;

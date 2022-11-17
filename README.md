@@ -10,8 +10,15 @@ Right now it does nothing.
 
 ## Planned
 
-* Volume control
-* Keyboard macros
-* MPRIS / Playback control
-* DBUS wiring
-* Mouse macros
+- [x] Volume control
+- [x] Keyboard macros
+- [x] MPRIS / Playback control
+- [ ] DBUS wiring
+- [ ] Mouse macros
+
+## TODO
+
+- [ ] Configuration by TOML (currently hardcoded)
+- [x] Volume updates when third party volume controls update
+- [ ] Mute for mic and playback
+- [ ] Letters support for PadPlugin
